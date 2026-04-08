@@ -26,7 +26,8 @@ public:
 
     // GETTERS
     // These let outside code read private data without modifying it.
-    // The trailing 'const' means this method won't change the object. string getName() const { return name; }
+    // The trailing 'const' means this method won't change the object. 
+    string getName() const { return name; }
     string getSymbol()        const { return symbol; }
     vector<string> getNotes() const { return notes; }
     string getDifficulty()    const { return difficulty; }
@@ -149,8 +150,8 @@ library.emplace_back("D Suspended 2", "Dsus2",
 }
 
 // Prints a horizontal line of dashes to visually separate sections.
-void printLine() {
-    cout << string(60, '-') << "\n"; // string(60, '-') creates a string of 60 dash characters
+void printLine(char ch = '-') {
+    cout << string(56, ch) << "\n";
 }
 
 // Prints a title centred between two lines of '=' characters.
@@ -179,6 +180,15 @@ void pause () {
     cin.get(); // Wait for the user to press Enter
 }
 
+// Removes leading and trailing whitespace from a string.
+// Protects against accidental spaces when the user types their answer.
+string trim(const string& s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    size_t end   = s.find_last_not_of(" \t\r\n");
+    // If only whitespace was found, return an empty string
+    return (start == string::npos) ? "" : s.substr(start, end - start + 1);
+}
+
 // Displays the main menu and prompts the user for their choice.
 void printMainMenu() {
     cout << "\n";
@@ -192,10 +202,107 @@ void printMainMenu() {
     cout << "\nEnter your choice: ";
 }
 
-//
+// Learn Mode allows the user to browse all chords, filter by difficulty, or search by name/symbol.
 void learnMode(const vector<Chord>& library) {
-    cout << "\n";
-    pause();
+    // 'back' controls the learn mode loop — set to true to return to main menu
+    bool back = false;
+
+    while (!back) {
+        cout << "\n";
+        printBanner(" Learn Mode ");
+        cout << "\n";
+        cout << " [1] Browse all chords\n";
+        cout << " [2] Filter by difficulty\n";
+        cout << " [3] Search by name or symbol\n";
+        cout << " [4] Back to Main Menu\n\n";
+        printLine();
+        cout << "\nEnter your choice: ";
+
+        string input;
+        getline(cin, input);
+        input = trim(input);
+
+        if (input =="1") {
+            // Browse all chords
+            cout << "\n";
+            printLine('=');
+            cout << " All Chords (" << library.size() << " total)\n";
+            printLine('=');
+            for (const Chord& chord : library) {
+                chord.display();
+                printLine('-');
+            }
+            pause();
+
+        } else if (input == "2") {
+            // Filter by difficulty
+            cout << "\n [1] Beginner [2] Intermediate [3] Advanced\n" << " Choice ";
+            string dc; // difficulty choice
+            getline(cin, dc);
+            dc = trim(dc);
+
+            // Map user input to difficulty string
+            string filter;
+            if (dc == "1") filter = "Beginner";
+            else if (dc == "2") filter = "Intermediate";
+            else if (dc == "3") filter = "Advanced";
+            else {
+                cout << "\n Invalid choice. Returning to Learn Mode menu.\n";
+                continue; // back to difficulty menu
+            }
+
+            cout << "\n";
+            printLine('=');
+            cout << " " << filter << " Chords\n";
+            printLine('=');
+
+            bool found = false;
+            for (const Chord& chord : library) {
+                // Only display chords that match the selected difficulty
+                if (chord.getDifficulty() == filter) {
+                    chord.display();
+                    printLine();
+                    found = true;
+                }
+            }
+            if (!found) cout << " No chords found.\n";
+            pause();
+
+        } else if (input == "3") {
+            // Search
+            cout << " Enter chord name or symbol: ";
+            string query;
+            getline(cin, query);
+            query = trim(query);
+
+            cout << "\n";
+            printLine('=');
+            cout << " Results for \"" << query << "\"\n";
+            printLine('=');
+
+            bool found = false;
+            for (const Chord& chord : library) {
+                // Check if the query matches the symbol exactly (case-insensitive)
+                // OR if the query appears anywhere inside the full name
+                bool matchesSymbol = iequals(chord.getSymbol(), query);
+                bool matchesName   = chord.getName().find(query) != string::npos; // case-sensitive substring search
+
+                if (matchesSymbol || matchesName) {
+                chord.display();
+                printLine();
+                found = true;
+                }
+            }
+            if (!found) cout << " No chords found.\n";
+            pause();
+
+        } else if (input == "4") {
+            back = true; // exit the learn mode loop and return to main menu
+
+        } else {
+            cout << "\n Invalid choice. Returning to Learn Mode menu.\n";
+        }
+    }
 }
 
 //
@@ -259,6 +366,5 @@ int main() {
             cout << "\n  Invalid choice. Please enter 1, 2, 3, or 4.\n";
         }
     }
-
     return 0;
 }

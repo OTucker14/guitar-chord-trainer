@@ -3,6 +3,11 @@
 #include <vector>
 #include <limits> // needed for cin.ignore() and numeric_limits
 #include <cctype> // needed for tolower() function
+#include <algorithm> // needed for shuffle and iota
+#include <random> // needed for mt19937 random number generator
+#include <chrono> // needed for seeding the random number generator
+#include <iomanip> // needed for setw and setprecision when displaying scores
+#include <numeric> // needed for iota
 using namespace std;
 
 // A Chord object stores everything about one guitar chord.
@@ -202,6 +207,15 @@ void printMainMenu() {
     cout << "\nEnter your choice: ";
 }
 
+//Stores the result of a practice session
+//Using a struct instead of a class since we just want a simple data container without methods or encapsulation.
+struct SessionResult{
+int correct = 0;
+int total = 0;
+string difficulty;
+string timestamp;
+};
+
 // Learn Mode allows the user to browse all chords, filter by difficulty, or search by name/symbol.
 void learnMode(const vector<Chord>& library) {
     // 'back' controls the learn mode loop — set to true to return to main menu
@@ -305,15 +319,176 @@ void learnMode(const vector<Chord>& library) {
     }
 }
 
-//
-void practiceMode(const vector<Chord>& library) {
+// Returns a SessionResult so main() can store it in the history vector
+SessionResult practiceMode(const vector<Chord>& library) {
+    SessionResult result;
+
+    // CHOOSE DIFFICULTY 
     cout << "\n";
+    printBanner(" Practice Mode ");
+    cout << "\n"
+         << "  [1] Beginner only\n"
+         << "  [2] Intermediate only\n"
+         << "  [3] Advanced only\n"
+         << "  [4] All chords mixed\n\n"
+         << "  Choice: ";
+
+    string dc;
+    getline(cin, dc);
+    dc = trim(dc);
+
+    string diffFilter;
+    if      (dc == "1") diffFilter = "Beginner";
+    else if (dc == "2") diffFilter = "Intermediate";
+    else if (dc == "3") diffFilter = "Advanced";
+    else                diffFilter = "All";
+    result.difficulty = diffFilter;
+
+    // BUILD SUBSET
+    // Filter the library down to only chords matching the chosen difficulty
+    vector<Chord> subset;
+    for (const auto& c : library) {
+        if (diffFilter == "All" || c.getDifficulty() == diffFilter)
+            subset.push_back(c);
+    }
+
+    if (subset.empty()) {
+        cout << "\n  No chords available for that difficulty.\n";
+        return result;  // return early with empty result
+    }
+
+    //HOW MANY QUESTIONS? 
+    cout << "  How many questions? (1-" << subset.size() << "): ";
+    string qs;
+    getline(cin, qs);
+    int numQuestions = 0;
+    // stoi converts a string to an integer — we wrap in try/catch
+    // in case the user types something that isn't a number
+    try { numQuestions = stoi(trim(qs)); } catch (...) { numQuestions = 5; }
+    // Clamp to valid range so user can't ask for 0 or more than we have
+    numQuestions = max(1, min(numQuestions, (int)subset.size()));
+
+    // SHUFFLE
+    // Seed the random generator with the current time so it's
+    // different every run — same seed = same shuffle every time
+    unsigned seed = (unsigned)chrono::steady_clock::now().time_since_epoch().count();
+    mt19937 rng(seed);
+
+    // Build a list of indices [0, 1, 2, ...] then shuffle them
+    // so we pick chords in a random order without repeating
+    vector<int> indices(subset.size());
+    iota(indices.begin(), indices.end(), 0);  // fills with 0, 1, 2, 3...
+    shuffle(indices.begin(), indices.end(), rng);
+    indices.resize(numQuestions);  // only keep as many as we need
+
+    // PRACTICE LOOP 
+    cout << "\n";
+    printLine('=');
+    cout << "  " << numQuestions << " question(s) | Difficulty: " << diffFilter << "\n";
+    printLine('=');
+    cout << "\n  Tip: type the chord symbol (e.g. Am, G, Cmaj7)\n\n";
+
+    for (int i = 0; i < numQuestions; ++i) {
+        const Chord& chord = subset[indices[i]];
+
+        cout << "  Question " << (i + 1) << "/" << numQuestions << "\n";
+        printLine('-');
+        cout << "  Notes: " << chord.getNotesString() << "\n\n";
+        cout << "  Your answer: ";
+
+        string answer;
+        getline(cin, answer);
+        answer = trim(answer);
+
+        // Accept either the symbol ("Am") or full name ("A Minor")
+        bool correct = iequals(answer, chord.getSymbol()) ||
+                       iequals(answer, chord.getName());
+
+        if (correct) {
+            ++result.correct;
+            cout << "\n  Correct! Well done.\n\n";
+        } else {
+            cout << "\n  Not quite. The answer was: "
+                 << chord.getName() << " (" << chord.getSymbol() << ")\n"
+                 << "  Fingering: " << chord.getFingerPosition() << "\n\n";
+        }
+    }
+
+    result.total = numQuestions;
+
+    // SESSION SUMMARY 
+    double pct = (result.total > 0) ? 100.0 * result.correct / result.total : 0.0;
+
+    cout << "\n";
+    printBanner(" Session Complete ");
+    cout << "\n"
+         << "  Score    : " << result.correct << " / " << result.total << "\n"
+         << "  Accuracy : " << fixed << setprecision(1) << pct << "%\n";
+
+    // Give different feedback based on score
+    string grade;
+    if      (pct == 100.0) grade = "Perfect! You're a chord master!";
+    else if (pct >= 80.0)  grade = "Great job! Keep strumming!";
+    else if (pct >= 60.0)  grade = "Good effort. Practice makes perfect!";
+    else if (pct >= 40.0)  grade = "Keep at it - you're learning!";
+    else                   grade = "Don't give up - review Learn Mode!";
+
+    cout << "  Feedback : " << grade << "\n\n";
+    printLine('=');
+
+    // TIMESTAMP 
+    // Record when this session happened for the history screen
+    auto now = chrono::system_clock::now();
+    auto t   = chrono::system_clock::to_time_t(now);
+    tm tm_buf{};
+    localtime_s(&tm_buf, &t);  // Windows-safe version of localtime
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
+    result.timestamp = buf;
+
     pause();
+    return result;
 }
 
-//
-void showHistory() {
+// Takes the full session history and displays it as a table.
+// 'const' means we're just reading the history, not changing it.
+void showHistory(const vector<SessionResult>& history) {
     cout << "\n";
+    printBanner(" Score History ");
+
+    if (history.empty()) {
+        cout << "\n  No sessions played yet.\n";
+        pause();
+        return;
+    }
+
+    // Print table header — setw() sets the column width for alignment
+    cout << "\n  "
+         << left << setw(22) << "Timestamp"
+         << setw(14) << "Difficulty"
+         << setw(10) << "Score"
+         << "Accuracy\n";
+    printLine();
+
+    int totalCorrect = 0, totalQuestions = 0;
+    for (const auto& r : history) {
+        double pct = (r.total > 0) ? 100.0 * r.correct / r.total : 0.0;
+        cout << "  "
+             << left  << setw(22) << r.timestamp
+             << setw(14) << r.difficulty
+             << r.correct << "/" << r.total
+             << "     "
+             << fixed << setprecision(1) << pct << "%\n";
+        totalCorrect   += r.correct;
+        totalQuestions += r.total;
+    }
+
+    // Overall totals across all sessions
+    printLine();
+    double overallPct = (totalQuestions > 0)
+                        ? 100.0 * totalCorrect / totalQuestions : 0.0;
+    cout << "\n  Overall: " << totalCorrect << "/" << totalQuestions
+         << "  (" << fixed << setprecision(1) << overallPct << "%)\n";
     pause();
 }
 
@@ -334,35 +509,34 @@ void showWelcome() {
 }
 
 int main() {
-    // Build the chord library once — every mode shares this same vector
     vector<Chord> library = buildChordLibrary();
 
-    // Show the welcome screen once at startup
+    // Stores all session results for the current run
+    vector<SessionResult> history;
+
     showWelcome();
 
-    // 'running' controls the main loop — set to false to exit
     bool running = true;
-
     while (running) {
-        // Print the menu and get the user's choice
         printMainMenu();
 
-        // getline reads the whole line including spaces,
-        // safer than cin >> choice which can leave newlines in the buffer
         string choice;
         getline(cin, choice);
 
         if (choice == "1") {
             learnMode(library);
         } else if (choice == "2") {
-            practiceMode(library);
+            // Store the returned result in history
+            SessionResult r = practiceMode(library);
+            // Only save if the user actually answered questions
+            if (r.total > 0) history.push_back(r);
         } else if (choice == "3") {
-            showHistory();
+            // Pass history in so showHistory() can display it
+            showHistory(history);
         } else if (choice == "4") {
             cout << "\n  Thanks for practicing! Keep strumming!\n\n";
-            running = false;      // exits the while loop cleanly
+            running = false;
         } else {
-            // Any other input lands here
             cout << "\n  Invalid choice. Please enter 1, 2, 3, or 4.\n";
         }
     }

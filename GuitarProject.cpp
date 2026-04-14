@@ -8,6 +8,7 @@
 #include <chrono> // needed for seeding the random number generator
 #include <iomanip> // needed for setw and setprecision when displaying scores
 #include <numeric> // needed for iota
+#include <fstream>  // needed for reading and writing files
 using namespace std;
 
 // A Chord object stores everything about one guitar chord.
@@ -215,6 +216,72 @@ int total = 0;
 string difficulty;
 string timestamp;
 };
+
+// Saves a single session result to scores.txt.
+// We use 'append' mode (ios::app) so each new result is added
+// to the end of the file rather than overwriting previous ones.
+void saveResult(const SessionResult& r) {
+    ofstream file("scores.txt", ios::app);  // open in append mode
+
+    if (!file.is_open()) {
+        cout << "\n  Warning: could not save score to file.\n";
+        return;
+    }
+
+    // Write one line per session in a simple format we can read back later
+    // We separate each field with a | character so we can split it when loading
+    file << r.timestamp << "|"
+         << r.difficulty << "|"
+         << r.correct << "|"
+         << r.total << "\n";
+
+    file.close();
+}
+
+// Loads all previously saved sessions from scores.txt.
+// Called once at startup so history persists between runs.
+vector<SessionResult> loadHistory() {
+    vector<SessionResult> history;
+
+    ifstream file("scores.txt");  // open in read mode
+
+    // If the file doesn't exist yet that's fine —
+    // it just means no sessions have been saved yet
+    if (!file.is_open()) return history;
+
+    string line;
+    // Read the file one line at a time
+    while (getline(file, line)) {
+        if (line.empty()) continue;  // skip blank lines
+
+        // Split the line by '|' to get each field back
+        // find() locates the '|' and substr() cuts the string at that point
+        SessionResult r;
+        size_t p1 = line.find('|');
+        size_t p2 = line.find('|', p1 + 1);
+        size_t p3 = line.find('|', p2 + 1);
+
+        // Make sure all separators were found before reading
+        if (p1 == string::npos || p2 == string::npos || p3 == string::npos)
+            continue;  // skip any malformed lines
+
+        r.timestamp  = line.substr(0, p1);
+        r.difficulty = line.substr(p1 + 1, p2 - p1 - 1);
+
+        // stoi converts the string back to an integer
+        try {
+            r.correct = stoi(line.substr(p2 + 1, p3 - p2 - 1));
+            r.total   = stoi(line.substr(p3 + 1));
+        } catch (...) {
+            continue;  // skip lines with bad number data
+        }
+
+        history.push_back(r);
+    }
+
+    file.close();
+    return history;
+}
 
 // Learn Mode allows the user to browse all chords, filter by difficulty, or search by name/symbol.
 void learnMode(const vector<Chord>& library) {
@@ -445,6 +512,9 @@ SessionResult practiceMode(const vector<Chord>& library) {
     char buf[32];
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
     result.timestamp = buf;
+    
+    // Save this session to file before returning
+    saveResult(result);
 
     pause();
     return result;
@@ -511,8 +581,9 @@ void showWelcome() {
 int main() {
     vector<Chord> library = buildChordLibrary();
 
-    // Stores all session results for the current run
-    vector<SessionResult> history;
+    // Load saved history from file so scores persist between runs
+    // If no file exists yet, loadHistory() returns an empty vector
+    vector<SessionResult> history = loadHistory();
 
     showWelcome();
 
